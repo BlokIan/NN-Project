@@ -1,0 +1,2 @@
+Our project will focus on simulating the 3-body problem with a neural network. 
+We will compare the performance of a neural network on an  iterated single-step task to a standard ordinary differential equation solver.
