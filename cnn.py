@@ -38,4 +38,5 @@ class ConvolutionalNeuralNetwork(nn.Module):
         x = self.hidden_layer(x)
         x = torch.flatten(x, 1) # Flatten all dimensions except batch
         logits = self.classifier_layer(x)
-        return logits
+        softmax = nn.Softmax(dim=1)
+        return softmax(logits)
