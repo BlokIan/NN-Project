@@ -1,0 +1,7 @@
+Create function for visualizing image (numbers to image)
+Look if format is correct
+Split data
+Baseline model and check if model overfits (it should in this case)
+Preprocessing functions for regularization
+Internal regularization techniques
+Postprocessing regularization techniques / labels
