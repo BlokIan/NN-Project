@@ -1,36 +1,42 @@
 import torch
 import numpy as np
-import random
-#abstract class for a dataset
-class imageDataloader(torch.utils.data.Dataset): 
-    def __init__(self, path, batch_size=50):
-        self.batch_size = batch_size
-        self.image_size = 240
-        self.index = 0
+
+device = ("cuda")
+
+class imageDataset(torch.utils.data.Dataset): 
+    def __init__(self, path):
+        image_size = 240
         with open(path, "r") as f:
-            self.data = f.read()
-        self.data=self.data.replace(" ", "")
-        self.data=self.data.replace("\n", "")
-        self.labels = np.zeros((len(self.data)//self.image_size, 10)) #n_images x 10 matrix
+            data = f.read()
+        data=data.replace(" ", "")
+        data=data.replace("\n", "")
+        self.labels = np.zeros((len(data)//image_size, 10)) #n_images x 10 matrix
         j = -1
-        images = np.zeros(len(self.data)//self.image_size)
+        self.images = np.zeros(len(data)//image_size, dtype=object)
         idx = 0
+        image = np.empty((16, 15), dtype=np.float32)
         for i, label in enumerate(self.labels):
             if i % 100 == 0:
                 j += 1
             label[j] = 1
-            images[idx] = self.data[idx*self.image_size:idx*self.image_size+self.image_size]
+            m = i * image_size # index for parsing .txt file
+            for k in range(16):
+                for l in range(15):
+                    image[k][l] = data[m]
+                    m += 1
+
+            self.images[idx] = image
             idx += 1
+            image = np.empty((16, 15), dtype=np.float32)
 
     def __getitem__(self, index):
-        image, label = self.xy[index]
+        image = self.images[index]
+        label = self.labels[index]
+        image = image.reshape([16,15,1])
+        image = np.moveaxis(image, 2, 0)
+        image = torch.from_numpy(image).to(device)
+        label = torch.from_numpy(label).to(device)
         return image, label
 
     def __len__(self):
-        pass
-
-# load = imageDataloader("Training_data.txt")
-# print(next(load))
-# print(next(load))
-# print(next(load))
-# print(next(load))
+        return len(self.labels)

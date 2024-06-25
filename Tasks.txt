@@ -5,3 +5,12 @@ Baseline model and check if model overfits (it should in this case)
 Preprocessing functions for regularization
 Internal regularization techniques
 Postprocessing regularization techniques / labels
+
+For Preprocessing:
+- Using methods such as t-SNE, MDS to give see the separability of the classes
+- Distribution of training set images with classes, how training/testing data there is for each digit
+- Visualize the digits
+
+For Visualizing Performance:
+- Plot curve for training and validation
+- Confusion Matrix for the Validation set 
