@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
     train_dataloader = DataLoader(xtrain, batch_size=batch_size, shuffle=True)
     test_dataloader = DataLoader(xtest, batch_size=batch_size, shuffle=True)
-    
+
     for t in range(epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train_loop(train_dataloader, model, loss_fn, optimizer)
