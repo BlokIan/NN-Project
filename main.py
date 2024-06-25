@@ -7,12 +7,14 @@ from cnn import ConvolutionalNeuralNetwork
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
 
-device = ("cpu")
+device = ("cuda")
 print(f"Using {device} device")
 
 
-def get_data(path="Training_data.txt") -> np.array: 
+def get_data(path) -> np.array:
     # converts data file to array which contains 10 arrays (1 for each number)
     # each list contains 200 images
     # each image is a 15x16 array
@@ -73,13 +75,43 @@ def convert_data_to_input(data):
             else:
                 tensor = np.concatenate((tensor, image), axis = 0)
     xdata = torch.from_numpy(tensor).to(device)
-
-    ldata = torch.zeros((len(data), 10))
-    print()
-    for i in range(10):
-        ldata[i*(len(data)//10):i*(len(data)//10)+(len(data)//10)][i] = 1
-    print(ldata)
     return xdata
+
+
+def train_one_epoch(epoch_index, tb_writer) -> float:
+    """Trains the model on one epoch. Computes average loss per batch, and reports this.
+
+    Args:
+        epoch_index (int): To keep track of the amount of data used (?)
+        tb_writer (): Used to report results
+
+    Returns:
+        float: The last average loss
+    """
+
+    running_loss = 0
+    last_loss = 0
+    report_per_batch = 100
+
+    for i, inputs, labels in enumerate(dataLoader):
+        optimizer.zero_grad()
+        outputs = model(inputs)
+
+        loss = loss_fn(outputs, labels)
+        loss.backward()
+
+        optimizer.step()
+
+        # Gather data and report
+        running_loss += loss.item()
+        if i % report_per_batch == report_per_batch - 1:
+            last_loss = running_loss / report_per_batch
+            print('  batch {} loss: {}'.format(i + 1, last_loss))
+            tb_x = epoch_index * len(dataLoader) + i + 1
+            tb_writer.add_scalar('Loss/train', last_loss, tb_x)
+            running_loss = 0
+
+    return last_loss
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -99,6 +131,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
             loss, current = loss.item(), batch * batch_size + len(X)
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
+
 def test_loop(dataloader, model, loss_fn):
     # Set the model to evaluation mode - important for batch normalization and dropout layers
     # Unnecessary in this situation but added for best practices
@@ -117,32 +150,51 @@ def test_loop(dataloader, model, loss_fn):
     correct /= size
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
+
 if __name__ == "__main__":
-    data, labels = get_data()
-    xtrain, xtest = convert_data_to_input(data)
-
-    # # TRY MODEL
-    # result = model(xtrain)
-
-    model = ConvolutionalNeuralNetwork().to(device)
-    # result = model(xtrain)
-
-    # print(model)
-    # print(backprop_alg(xtrain, xtest, model, epochs=3))
-    # print(torch.cuda.is_available())
+    data, labels = get_data("Training_data.txt")    
+    xtrain = convert_data_to_input(data)
 
     learning_rate = 1e-3
     batch_size = 64
     epochs = 10
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optimSGD(model.parameters(), lr=learning_rate)
 
-    train_dataloader = DataLoader(xtrain, batch_size=batch_size, shuffle=True)
-    test_dataloader = DataLoader(xtest, batch_size=batch_size, shuffle=True)
+    model = ConvolutionalNeuralNetwork().to(device)
+    loss_fn = nn.CrossEntropyLoss() # explain in report
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+    
+    # CREATE DATALOADERS HERE
 
-    for t in range(epochs):
-        print(f"Epoch {t+1}\n-------------------------------")
-        train_loop(train_dataloader, model, loss_fn, optimizer)
-        test_loop(test_dataloader, model, loss_fn)
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
+    epoch_number = 0
+    best_vloss = 1_000_000
+    
+    for epoch in range(epochs):
+        print('EPOCH {}:'.format(epoch_number + 1))
+
+        model.train(True)
+        average_loss = train_one_epoch(epoch_number, writer)
         
-    print("Done!")
+        running_vloss = 0.0
+        with torch.no_grad():
+            for i, vinputs, vlabels in enumerate(validation_loader):
+                voutputs = model(vinputs)
+                vloss = loss_fn(voutputs, vlabels)
+                running_vloss += vloss
+        
+        average_vloss = running_vloss / (i+1)
+        print('LOSS train {} valid {}'.format(average_loss, average_vloss))
+        
+        writer.add_scalars('Training vs. Validation Loss',
+                    { 'Training' : average_loss, 'Validation' : average_vloss },
+                    epoch_number + 1)
+        writer.flush()
+        
+        if average_vloss < best_vloss:
+            best_vloss = average_vloss
+            model_path = 'model_{}_{}'.format(timestamp, epoch_number)
+            torch.save(model.state_dict(), model_path)
+
+        epoch_number += 1
