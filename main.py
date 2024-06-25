@@ -91,7 +91,7 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
 
     running_loss = 0
     last_loss = 0
-    report_per_batch = 100
+    report_per_samples = 100 # Specifies per how many samples you want to report
 
     for i, inputs, labels in enumerate(dataLoader):
         optimizer.zero_grad()
@@ -104,14 +104,15 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
 
         # Gather data and report
         running_loss += loss.item()
-        if i % report_per_batch == report_per_batch - 1:
-            last_loss = running_loss / report_per_batch
+        if i % report_per_samples == report_per_samples - 1:
+            last_loss = running_loss / report_per_samples
             print('  batch {} loss: {}'.format(i + 1, last_loss))
             tb_x = epoch_index * len(dataLoader) + i + 1
             tb_writer.add_scalar('Loss/train', last_loss, tb_x)
             running_loss = 0
 
     return last_loss
+
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -162,36 +163,36 @@ if __name__ == "__main__":
     model = ConvolutionalNeuralNetwork().to(device)
     loss_fn = nn.CrossEntropyLoss() # explain in report
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-    
+ 
     # CREATE DATALOADERS HERE
-
+    
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
     epoch_number = 0
     best_vloss = 1_000_000
-    
+
     for epoch in range(epochs):
         print('EPOCH {}:'.format(epoch_number + 1))
 
         model.train(True)
         average_loss = train_one_epoch(epoch_number, writer)
-        
+
         running_vloss = 0.0
         with torch.no_grad():
             for i, vinputs, vlabels in enumerate(validation_loader):
                 voutputs = model(vinputs)
                 vloss = loss_fn(voutputs, vlabels)
                 running_vloss += vloss
-        
+
         average_vloss = running_vloss / (i+1)
         print('LOSS train {} valid {}'.format(average_loss, average_vloss))
-        
+
         writer.add_scalars('Training vs. Validation Loss',
                     { 'Training' : average_loss, 'Validation' : average_vloss },
                     epoch_number + 1)
         writer.flush()
-        
+
         if average_vloss < best_vloss:
             best_vloss = average_vloss
             model_path = 'model_{}_{}'.format(timestamp, epoch_number)
