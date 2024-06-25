@@ -1,0 +1,2 @@
+Also classic lenet 5 model does not want to learn a single digit.
+It now skipped the number 4. Why does it do this?

@@ -1,0 +1,2 @@
+After running the model multiple times, model keeps not guessing one or two numbers.
+Probably model is too simple still, model also does not overfit yet.
