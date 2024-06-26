@@ -1,2 +1,20 @@
 Also classic lenet 5 model does not want to learn a single digit.
 It now skipped the number 4. Why does it do this?
+
+Check whether model can learn one class only.
+
+Explanation might be dead ReLu() causation. If weight causes input
+to be very negative output will be 0, which means no learning.
+
+A paper about dropout learning said that dropout improves performance,
+it works even better in combination with maxnorm regularization, large
+decaying learning rates and high momentum, possibly because the model
+can then explore many spaces first, and then less after decreased
+learning rate (5.1).
+The paper furthermore said that for convolutional nets, adding dropout
+for all layers in combination with maxout units (6.1.2)
+
+https://stackoverflow.com/questions/41488279/neural-network-always-predicts-the-same-class
+Also take a look at this
+And this (along with paper named "1155")
+https://github.com/axelstr/adversarial_machine_learning?tab=readme-ov-file

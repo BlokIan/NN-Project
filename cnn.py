@@ -7,6 +7,7 @@ from torch.nn import ReLU
 from torch.nn import MaxPool2d
 from torch.nn import Conv2d
 from torch.nn import Linear
+from torch.nn import LeakyReLu
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision import transforms
@@ -26,9 +27,9 @@ class ConvolutionalNeuralNetwork(nn.Module):
         )
         self.classifier_layer = nn.Sequential(
             Linear(16*2*2, 120),
-            ReLU(),
+            LeakyReLu(),
             Linear(120, 84),
-            ReLU(),
+            LeakyReLu(),
             Linear(84, 10)
         )
         
