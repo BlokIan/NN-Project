@@ -15,7 +15,7 @@ from dataloader import imageDataset
 from sklearn.metrics import confusion_matrix
 import seaborn as sn
 import pandas as pd
-
+import random
 
 device = ("cuda")
 print(f"Using {device} device")
@@ -79,6 +79,10 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
         loss.backward()
 
         optimizer.step()
+        print("MAX NORM")
+        max_norm(model)
+        print("MAX NORM")
+
 
         # Gather data and report
         running_loss += loss.item()
@@ -101,23 +105,13 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
     return last_loss
 
 
-def max_norm_(weight_tensor):  
-        #https://discuss.pytorch.org/t/how-to-correctly-implement-in-place-max-norm-constraint/96769/5 
-        #https://github.com/keras-team/keras/blob/v3.3.3/keras/src/constraints/constraints.py#L80
-        max_norm_val = 1
-        with torch.no_grad():
-            norm = weight_tensor.norm(2, dim=0, keepdim=True)
-            desired = torch.clamp(norm, max=max_norm_val)
-            weight_tensor *= (desired / norm)
-        return weight_tensor
-
-
-def max_norm():
-    pass
-
-
-def loss_fn(outputs, labels):
-    pass
+def max_norm(model, max_val=3, eps=1e-8):
+    # https://github.com/kevinzakka/pytorch-goodies
+    for name, param in model.named_parameters():
+        if 'bias' not in name:
+            norm = param.norm(2, dim=0, keepdim=True)
+            desired = torch.clamp(norm, 0, max_val)
+            param = param * (desired / (eps + norm))
 
 
 if __name__ == "__main__":
@@ -125,74 +119,97 @@ if __name__ == "__main__":
     softmax = Softmax(dim=1)
     dataset = imageDataset("Training_data.txt")
     
-    val_size = 0.2
-    val_amount = int(len(dataset) * val_size)
-    train_set, val_set = random_split(dataset, [
-        (len(dataset) - val_amount),
-        val_amount
-    ])
+    kfolds = 1
 
-    learning_rate = 0.1
+    data = []
+    for value in dataset:
+        data.append(value)
+    random.shuffle(data)
+    folds = ([data[i::kfolds] for i in range(kfolds)])
+    
+    accuracies = []
+
+    learning_rate = 0.01
     batch_size = 1
-    epochs = 30
+    epochs = 20
+    
+    for i, fold in enumerate(folds):
+        if len(folds) > 1:
+            train_set = []
+            for j, set in enumerate(folds):
+                if j == i:
+                    val_set = set
+                else:
+                    train_set += set
+        else:
+            val_size = 0.2
+            val_amount = int(len(dataset) * val_size)
+            train_set, val_set = random_split(dataset, [
+                (len(dataset) - val_amount),
+                val_amount
+            ])
 
-    train_dataLoader = DataLoader( #explain in report
-        train_set,
-        batch_size=batch_size,
-        shuffle=True
-    )
+        # learning_rate = 0.01
+        # batch_size = 1
+        # epochs = 1
 
-    validation_dataloader = DataLoader(
-        val_set,
-        batch_size=batch_size,
-        shuffle=True
-    )
+        train_dataLoader = DataLoader( #explain in report
+            train_set,
+            batch_size=batch_size,
+            shuffle=True
+        )
 
-    model = ConvolutionalNeuralNetwork().to(device)
-    cross_entropy = nn.CrossEntropyLoss() # explain in report
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-    timestamp = datetime.now().strftime('%H_%M')
-    writer = tensorboard.SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
+        validation_dataloader = DataLoader(
+            val_set,
+            batch_size=batch_size,
+            shuffle=True
+        )
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+        model = ConvolutionalNeuralNetwork().to(device)
+        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+        timestamp = datetime.now().strftime('%H_%M')
+        writer = tensorboard.SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
+        loss_fn = nn.CrossEntropyLoss() # explain in report
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
-    epoch_number = 0
-    best_vloss = 1_000_000
+        epoch_number = 0
+        best_vloss = 1_000_000
 
-    for epoch in range(epochs):
-        print('EPOCH {}:'.format(epoch_number + 1))
+        for epoch in range(epochs):
+            print('EPOCH {}:'.format(epoch_number + 1))
 
-        model.train(True)
-        average_loss = train_one_epoch(epoch_number, writer)
+            model.train(True)
+            average_loss = train_one_epoch(epoch_number, writer)
 
-        running_vloss = 0.0
-        correct_predictions = 0
-        with torch.no_grad():
-            for i, data in enumerate(validation_dataloader):
-                vinputs, vlabels = data
-                voutputs = model(vinputs)
-                predict = torch.argmax(softmax(voutputs))
-                target = torch.argmax(vlabels)
-                if predict == target:
-                    correct_predictions += 1
-                vloss = loss_fn(voutputs, vlabels)
-                running_vloss += vloss
+            running_vloss = 0.0
+            correct_predictions = 0
+            with torch.no_grad():
+                for i, data in enumerate(validation_dataloader):
+                    vinputs, vlabels = data
+                    voutputs = model(vinputs)
+                    predict = torch.argmax(softmax(voutputs))
+                    target = torch.argmax(vlabels)
+                    if predict == target:
+                        correct_predictions += 1
+                    vloss = loss_fn(voutputs, vlabels)
+                    running_vloss += vloss
 
-        accuracy = float(correct_predictions / len(validation_dataloader))
-        writer.add_scalar("Validation accuracy", accuracy, epoch)
-        average_vloss = running_vloss / (i+1)
-        print('LOSS train {} valid {}'.format(average_loss, average_vloss))
+            accuracy = float(correct_predictions / len(validation_dataloader))
+            writer.add_scalar("Validation accuracy", accuracy, epoch)
+            average_vloss = running_vloss / (i+1)
+            print('LOSS train {} valid {}'.format(average_loss, average_vloss))
 
-        writer.add_scalars('Training vs. Validation Loss',
-                    { 'Training' : average_loss, 'Validation' : average_vloss },
-                    epoch_number + 1)
+            writer.add_scalars('Training vs. Validation Loss',
+                        { 'Training' : average_loss, 'Validation' : average_vloss },
+                        epoch_number + 1)
 
-        if average_vloss < best_vloss:
-            best_vloss = average_vloss
-            model_path = 'runs\\fashion_trainer_{}\\model_{}'.format(timestamp, epoch_number)
-            torch.save(model.state_dict(), model_path)
+            if average_vloss < best_vloss:
+                best_vloss = average_vloss
+                model_path = 'runs\\fashion_trainer_{}\\model_{}'.format(timestamp, epoch_number)
+                torch.save(model.state_dict(), model_path)
 
-        scheduler.step()
-        epoch_number += 1
-
+            scheduler.step()
+            epoch_number += 1
+        accuracies.append(accuracy)
+    print(sum(accuracies)/len(accuracies), accuracies)
     writer.flush()
