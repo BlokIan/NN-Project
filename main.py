@@ -96,88 +96,103 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
 
     accuracy = correct_predictions / len(train_dataLoader)
     writer.add_scalar("Accuracy/val", accuracy, tb_x)
-    # writer.add_figure("Confusion matrix validation set", createConfusionMatrix(validation_dataloader), epoch)
-    # writer.add_figure("Confusion matrix training set", createConfusionMatrix(train_dataLoader), epoch)
-    return last_loss, accuracy
+    writer.add_figure("Confusion matrix validation set", createConfusionMatrix(validation_dataloader), epoch)
+    writer.add_figure("Confusion matrix training set", createConfusionMatrix(train_dataLoader), epoch)
+    return last_loss
+
+
+def max_norm_(weight_tensor):  
+        #https://discuss.pytorch.org/t/how-to-correctly-implement-in-place-max-norm-constraint/96769/5 
+        #https://github.com/keras-team/keras/blob/v3.3.3/keras/src/constraints/constraints.py#L80
+        max_norm_val = 1
+        with torch.no_grad():
+            norm = weight_tensor.norm(2, dim=0, keepdim=True)
+            desired = torch.clamp(norm, max=max_norm_val)
+            weight_tensor *= (desired / norm)
+        return weight_tensor
+
+
+def max_norm():
+    pass
+
+
+def loss_fn(outputs, labels):
+    pass
 
 
 if __name__ == "__main__":
     # Creating DataLoaders
     softmax = Softmax(dim=1)
     dataset = imageDataset("Training_data.txt")
-    indices = list(range(len(dataset)))
-    batches = [indices[i * 100:(i + 1) * 100] for i in range(10)]
-    subsets = [Subset(dataset, batch) for batch in batches]
-
     
-    for class_num in range(10):
-        dataset = subsets[class_num]
-        val_size = 0.2
-        val_amount = int(len(dataset) * val_size)
-        train_set, val_set = random_split(dataset, [
-            (len(dataset) - val_amount),
-            val_amount
-        ])
+    val_size = 0.2
+    val_amount = int(len(dataset) * val_size)
+    train_set, val_set = random_split(dataset, [
+        (len(dataset) - val_amount),
+        val_amount
+    ])
 
-        learning_rate = 0.01
-        batch_size = 1
-        epochs = 20
+    learning_rate = 0.1
+    batch_size = 1
+    epochs = 30
 
-        train_dataLoader = DataLoader( #explain in report
-            train_set,
-            batch_size=batch_size,
-            shuffle=True
-        )
+    train_dataLoader = DataLoader( #explain in report
+        train_set,
+        batch_size=batch_size,
+        shuffle=True
+    )
 
-        validation_dataloader = DataLoader(
-            val_set,
-            batch_size=batch_size,
-            shuffle=True
-        )
+    validation_dataloader = DataLoader(
+        val_set,
+        batch_size=batch_size,
+        shuffle=True
+    )
 
-        model = ConvolutionalNeuralNetwork().to(device)
-        loss_fn = nn.CrossEntropyLoss() # explain in report
-        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-        timestamp = datetime.now().strftime('%H_%M')
-        writer = tensorboard.SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
+    model = ConvolutionalNeuralNetwork().to(device)
+    cross_entropy = nn.CrossEntropyLoss() # explain in report
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+    timestamp = datetime.now().strftime('%H_%M')
+    writer = tensorboard.SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
 
-        epoch_number = 0
-        best_vloss = 1_000_000
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
-        for epoch in range(epochs):
-            print('EPOCH {}:'.format(epoch_number + 1))
+    epoch_number = 0
+    best_vloss = 1_000_000
 
-            model.train(True)
-            average_loss, taccuracy = train_one_epoch(epoch_number, writer)
+    for epoch in range(epochs):
+        print('EPOCH {}:'.format(epoch_number + 1))
 
-            running_vloss = 0.0
-            correct_predictions = 0
-            with torch.no_grad():
-                for i, data in enumerate(validation_dataloader):
-                    vinputs, vlabels = data
-                    voutputs = model(vinputs)
-                    predict = torch.argmax(softmax(voutputs))
-                    target = torch.argmax(vlabels)
-                    if predict == target:
-                        correct_predictions += 1
-                    vloss = loss_fn(voutputs, vlabels)
-                    running_vloss += vloss
+        model.train(True)
+        average_loss = train_one_epoch(epoch_number, writer)
 
-            accuracy = float(correct_predictions / len(validation_dataloader))
-            print(f"Accuracy val class {class_num}: {accuracy}")
-            average_vloss = running_vloss / (i+1)
-            print('LOSS train {} valid {}'.format(average_loss, average_vloss))
+        running_vloss = 0.0
+        correct_predictions = 0
+        with torch.no_grad():
+            for i, data in enumerate(validation_dataloader):
+                vinputs, vlabels = data
+                voutputs = model(vinputs)
+                predict = torch.argmax(softmax(voutputs))
+                target = torch.argmax(vlabels)
+                if predict == target:
+                    correct_predictions += 1
+                vloss = loss_fn(voutputs, vlabels)
+                running_vloss += vloss
 
-            writer.add_scalars('Training vs. Validation Loss',
-                        { 'Training' : average_loss, 'Validation' : average_vloss },
-                        epoch_number + 1)
-            writer.flush()
+        accuracy = float(correct_predictions / len(validation_dataloader))
+        writer.add_scalar("Validation accuracy", accuracy, epoch)
+        average_vloss = running_vloss / (i+1)
+        print('LOSS train {} valid {}'.format(average_loss, average_vloss))
 
-            if average_vloss < best_vloss:
-                best_vloss = average_vloss
-                model_path = 'runs\\fashion_trainer_{}\\model_{}'.format(timestamp, epoch_number)
-                torch.save(model.state_dict(), model_path)
+        writer.add_scalars('Training vs. Validation Loss',
+                    { 'Training' : average_loss, 'Validation' : average_vloss },
+                    epoch_number + 1)
 
-            epoch_number += 1
+        if average_vloss < best_vloss:
+            best_vloss = average_vloss
+            model_path = 'runs\\fashion_trainer_{}\\model_{}'.format(timestamp, epoch_number)
+            torch.save(model.state_dict(), model_path)
 
-        print(f"Accuracy training class {class_num}: {taccuracy}")
+        scheduler.step()
+        epoch_number += 1
+
+    writer.flush()

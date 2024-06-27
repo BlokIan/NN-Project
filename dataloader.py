@@ -22,7 +22,7 @@ class imageDataset(torch.utils.data.Dataset):
             m = i * image_size # index for parsing .txt file
             for k in range(16):
                 for l in range(15):
-                    image[k][l] = data[m]
+                    image[k][l] = int(data[m]) / 6
                     m += 1
 
             self.images[idx] = image
