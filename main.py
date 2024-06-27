@@ -7,7 +7,8 @@ from cnn import ConvolutionalNeuralNetwork
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from torch.utils.data import random_split
+from torch.utils.data import random_split, Subset
+from torch.nn import Softmax
 import torch.utils.tensorboard as tensorboard
 from datetime import datetime
 from dataloader import imageDataset
@@ -49,7 +50,7 @@ def createConfusionMatrix(loader):
     cf_matrix = confusion_matrix(y_true, y_pred)
     df_cm = pd.DataFrame(cf_matrix / np.sum(cf_matrix, axis=1)[:, None], index=[i for i in classes],
                          columns=[i for i in classes])
-    plt.figure(figsize=(12, 7))    
+    plt.figure(figsize=(12, 7))
     return sn.heatmap(df_cm, annot=True).get_figure()
 
 
@@ -68,6 +69,7 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
     last_loss = 0
     report_per_samples = 100 # Specifies per how many samples you want to report
     correct_predictions = 0
+    tb_x = None
     for i, data in enumerate(train_dataLoader):
         inputs, labels = data
         optimizer.zero_grad()
@@ -86,79 +88,96 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
             tb_x = epoch_index * len(train_dataLoader) + i + 1
             tb_writer.add_scalar('Loss/train', last_loss, tb_x)
             running_loss = 0
-        predict = torch.argmax(outputs)
+
+        predict = torch.argmax(softmax(outputs))
         target = torch.argmax(labels)
         if predict == target:
             correct_predictions += 1
 
     accuracy = correct_predictions / len(train_dataLoader)
-    print(accuracy)
     writer.add_scalar("Accuracy/val", accuracy, tb_x)
-    writer.add_figure("Confusion matrix validation set", createConfusionMatrix(validation_dataloader), epoch)
-    writer.add_figure("Confusion matrix training set", createConfusionMatrix(train_dataLoader), epoch)
-    return last_loss
+    # writer.add_figure("Confusion matrix validation set", createConfusionMatrix(validation_dataloader), epoch)
+    # writer.add_figure("Confusion matrix training set", createConfusionMatrix(train_dataLoader), epoch)
+    return last_loss, accuracy
 
 
 if __name__ == "__main__":
     # Creating DataLoaders
+    softmax = Softmax(dim=1)
     dataset = imageDataset("Training_data.txt")
-    val_size = 0.2
-    val_amount = int(len(dataset) * val_size)
-    train_set, val_set = random_split(dataset, [
-        (len(dataset) - val_amount),
-        val_amount
-    ])
+    indices = list(range(len(dataset)))
+    batches = [indices[i * 100:(i + 1) * 100] for i in range(10)]
+    subsets = [Subset(dataset, batch) for batch in batches]
 
-    learning_rate = 0.01
-    batch_size = 1
-    epochs = 20
+    
+    for class_num in range(10):
+        dataset = subsets[class_num]
+        val_size = 0.2
+        val_amount = int(len(dataset) * val_size)
+        train_set, val_set = random_split(dataset, [
+            (len(dataset) - val_amount),
+            val_amount
+        ])
 
-    train_dataLoader = DataLoader( #explain in report
-        train_set,
-        batch_size=batch_size,
-        shuffle=True
-    )
+        learning_rate = 0.01
+        batch_size = 1
+        epochs = 20
 
-    validation_dataloader = DataLoader(
-        val_set,
-        batch_size=batch_size,
-        shuffle=True
-    )
+        train_dataLoader = DataLoader( #explain in report
+            train_set,
+            batch_size=batch_size,
+            shuffle=True
+        )
 
-    model = ConvolutionalNeuralNetwork().to(device)
-    loss_fn = nn.CrossEntropyLoss() # explain in report
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+        validation_dataloader = DataLoader(
+            val_set,
+            batch_size=batch_size,
+            shuffle=True
+        )
 
-    timestamp = datetime.now().strftime('%H_%M')
-    writer = tensorboard.SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
-    epoch_number = 0
-    best_vloss = 1_000_000
+        model = ConvolutionalNeuralNetwork().to(device)
+        loss_fn = nn.CrossEntropyLoss() # explain in report
+        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+        timestamp = datetime.now().strftime('%H_%M')
+        writer = tensorboard.SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
 
-    for epoch in range(epochs):
-        print('EPOCH {}:'.format(epoch_number + 1))
+        epoch_number = 0
+        best_vloss = 1_000_000
 
-        model.train(True)
-        average_loss = train_one_epoch(epoch_number, writer)
+        for epoch in range(epochs):
+            print('EPOCH {}:'.format(epoch_number + 1))
 
-        running_vloss = 0.0
-        with torch.no_grad():
-            for i, data in enumerate(validation_dataloader):
-                vinputs, vlabels = data
-                voutputs = model(vinputs)
-                vloss = loss_fn(voutputs, vlabels)
-                running_vloss += vloss
+            model.train(True)
+            average_loss, taccuracy = train_one_epoch(epoch_number, writer)
 
-        average_vloss = running_vloss / (i+1)
-        print('LOSS train {} valid {}'.format(average_loss, average_vloss))
+            running_vloss = 0.0
+            correct_predictions = 0
+            with torch.no_grad():
+                for i, data in enumerate(validation_dataloader):
+                    vinputs, vlabels = data
+                    voutputs = model(vinputs)
+                    predict = torch.argmax(softmax(voutputs))
+                    target = torch.argmax(vlabels)
+                    if predict == target:
+                        correct_predictions += 1
+                    vloss = loss_fn(voutputs, vlabels)
+                    running_vloss += vloss
 
-        writer.add_scalars('Training vs. Validation Loss',
-                    { 'Training' : average_loss, 'Validation' : average_vloss },
-                    epoch_number + 1)
-        writer.flush()
+            accuracy = float(correct_predictions / len(validation_dataloader))
+            print(f"Accuracy val class {class_num}: {accuracy}")
+            average_vloss = running_vloss / (i+1)
+            print('LOSS train {} valid {}'.format(average_loss, average_vloss))
 
-        if average_vloss < best_vloss:
-            best_vloss = average_vloss
-            model_path = 'runs\\fashion_trainer_{}\\model_{}'.format(timestamp, epoch_number)
-            torch.save(model.state_dict(), model_path)
+            writer.add_scalars('Training vs. Validation Loss',
+                        { 'Training' : average_loss, 'Validation' : average_vloss },
+                        epoch_number + 1)
+            writer.flush()
 
-        epoch_number += 1
+            if average_vloss < best_vloss:
+                best_vloss = average_vloss
+                model_path = 'runs\\fashion_trainer_{}\\model_{}'.format(timestamp, epoch_number)
+                torch.save(model.state_dict(), model_path)
+
+            epoch_number += 1
+
+        print(f"Accuracy training class {class_num}: {taccuracy}")

@@ -7,7 +7,7 @@ from torch.nn import ReLU
 from torch.nn import MaxPool2d
 from torch.nn import Conv2d
 from torch.nn import Linear
-from torch.nn import LeakyReLu
+from torch.nn import LeakyReLU
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision import transforms
@@ -27,9 +27,9 @@ class ConvolutionalNeuralNetwork(nn.Module):
         )
         self.classifier_layer = nn.Sequential(
             Linear(16*2*2, 120),
-            LeakyReLu(),
+            ReLU(),
             Linear(120, 84),
-            LeakyReLu(),
+            ReLU(),
             Linear(84, 10)
         )
         
@@ -60,5 +60,4 @@ class ConvolutionalNeuralNetwork(nn.Module):
         x = self.hidden_layer(x)
         x = torch.flatten(x, 1) # Flatten all dimensions except batch
         logits = self.classifier_layer(x)
-        softmax = nn.Softmax(dim=1)
-        return softmax(logits)
+        return logits
