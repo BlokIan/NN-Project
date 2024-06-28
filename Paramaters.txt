@@ -1,11 +1,8 @@
 Starting learning rate
 Decay value learning rate and step size
-Momentum value SGD
+Momentum value SGD (high range)
 p-value dropout
 Amount of folds k-fold
-max-norm value? (Don't know yet)
-Lambda value regularization penalty
-Train-val split?
+max-norm value
 
-
-amount of epochs?
+amount of epochs -> algorithm to determine when to stop (Early stopping?)?

@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import sklearn
 import torch
@@ -21,14 +22,27 @@ device = ("cuda")
 print(f"Using {device} device")
 
 
-def plot(image) -> None:
+def plot(image, label = None, path = None) -> None:
     # plt.imshow(image, cmap='gray', aspect='auto')
     plt.imshow(image.reshape([16,15]), cmap='gray', aspect='auto')
-    plt.title('Grayscale Image')
-    plt.show()
+    if label is not None:
+        plt.title(f"Guessed label: {label}")
+    else:
+        plt.title('Grayscale Image')
+    if path is not None:
+        plt.savefig(path)
+    else:
+        plt.show()
 
 
-def createConfusionMatrix(loader):
+def createConfusionMatrix(loader, mode):
+    if mode == "eval":
+        model.eval()
+    elif mode == "training":
+        model.train(True)
+    else:
+        raise ValueError()
+    
     y_pred = [] # save prediction
     y_true = [] # save ground truth
 
@@ -36,10 +50,10 @@ def createConfusionMatrix(loader):
     for inputs, labels in loader:
         output = model(inputs)  # Feed Network
 
-        output = (torch.max(torch.exp(output), 1)[1]).data.cpu().numpy()
-        y_pred.append(output[0])  # save prediction
+        output = (torch.argmax(softmax(output))).data.cpu().numpy()
+        y_pred.append(output)  # save prediction
 
-        labels = np.argmax(labels.data.cpu().numpy())
+        labels = (torch.argmax(labels)).data.cpu().numpy()
         y_true.append(labels)  # save ground truth
 
     # constant for classes
@@ -48,7 +62,7 @@ def createConfusionMatrix(loader):
 
     # Build confusion matrix
     cf_matrix = confusion_matrix(y_true, y_pred)
-    df_cm = pd.DataFrame(cf_matrix / np.sum(cf_matrix, axis=1)[:, None], index=[i for i in classes],
+    df_cm = pd.DataFrame(cf_matrix, index=[i for i in classes],  #  / np.sum(cf_matrix, axis=1)[:, None]
                          columns=[i for i in classes])
     plt.figure(figsize=(12, 7))
     return sn.heatmap(df_cm, annot=True).get_figure()
@@ -79,10 +93,7 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
         loss.backward()
 
         optimizer.step()
-        print("MAX NORM")
         max_norm(model)
-        print("MAX NORM")
-
 
         # Gather data and report
         running_loss += loss.item()
@@ -100,8 +111,8 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
 
     accuracy = correct_predictions / len(train_dataLoader)
     writer.add_scalar("Accuracy/val", accuracy, tb_x)
-    writer.add_figure("Confusion matrix validation set", createConfusionMatrix(validation_dataloader), epoch)
-    writer.add_figure("Confusion matrix training set", createConfusionMatrix(train_dataLoader), epoch)
+    writer.add_figure("Confusion matrix validation set", createConfusionMatrix(validation_dataloader, "eval"), epoch)
+    writer.add_figure("Confusion matrix training set", createConfusionMatrix(train_dataLoader, "training"), epoch)
     return last_loss
 
 
@@ -118,7 +129,36 @@ if __name__ == "__main__":
     # Creating DataLoaders
     softmax = Softmax(dim=1)
     dataset = imageDataset("Training_data.txt")
-    
+
+    test_model = True
+    if test_model:
+        path = r"C:\Users\ianbl\OneDrive\School root\AI\Year 2\Neural Networks\NN-Project\runs\fashion_trainer_10_40\model_18"
+        store_path = r"C:\Users\ianbl\OneDrive\School root\AI\Year 2\Neural Networks\NN-Project\Results\3\classified_images"
+        model = ConvolutionalNeuralNetwork()
+        model.load_state_dict(torch.load(path, map_location=device))
+        model.to(device)
+        model.eval()
+        for param_tensor in model.state_dict():
+            print(param_tensor, "\t", model.state_dict()[param_tensor].size())
+        correct_predictions = 0
+        incorrect_predictions = 0
+        wrong_classified = []
+        data = DataLoader(
+            dataset,
+            shuffle=True
+        )
+        for i, batch in enumerate(data):
+            inputs, labels = batch
+            outputs = model(inputs)
+            predict = torch.argmax(softmax(outputs))
+            target = torch.argmax(labels)
+            if predict == target:
+                correct_predictions += 1
+            else:
+                incorrect_predictions += 1
+                plot(inputs.data.cpu().numpy(), predict.data.cpu().numpy(), os.path.join(store_path, f"{incorrect_predictions}"))
+        exit()
+
     kfolds = 1
 
     data = []
@@ -126,13 +166,13 @@ if __name__ == "__main__":
         data.append(value)
     random.shuffle(data)
     folds = ([data[i::kfolds] for i in range(kfolds)])
-    
+
     accuracies = []
 
     learning_rate = 0.01
     batch_size = 1
-    epochs = 20
-    
+    epochs = 10
+
     for i, fold in enumerate(folds):
         if len(folds) > 1:
             train_set = []
@@ -174,6 +214,7 @@ if __name__ == "__main__":
 
         epoch_number = 0
         best_vloss = 1_000_000
+        wrong_classified = []
 
         for epoch in range(epochs):
             print('EPOCH {}:'.format(epoch_number + 1))
@@ -184,6 +225,7 @@ if __name__ == "__main__":
             running_vloss = 0.0
             correct_predictions = 0
             with torch.no_grad():
+                model.eval()
                 for i, data in enumerate(validation_dataloader):
                     vinputs, vlabels = data
                     voutputs = model(vinputs)
@@ -213,3 +255,4 @@ if __name__ == "__main__":
         accuracies.append(accuracy)
     print(sum(accuracies)/len(accuracies), accuracies)
     writer.flush()
+    
