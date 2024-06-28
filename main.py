@@ -116,7 +116,7 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
     return last_loss
 
 
-def max_norm(model, max_val=3, eps=1e-8):
+def max_norm(model, max_val=10, eps=1e-8):
     # https://github.com/kevinzakka/pytorch-goodies
     for name, param in model.named_parameters():
         if 'bias' not in name:
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     softmax = Softmax(dim=1)
     dataset = imageDataset("Training_data.txt")
 
-    test_model = True
+    test_model = False
     if test_model:
         path = r"C:\Users\ianbl\OneDrive\School root\AI\Year 2\Neural Networks\NN-Project\runs\fashion_trainer_10_40\model_18"
         store_path = r"C:\Users\ianbl\OneDrive\School root\AI\Year 2\Neural Networks\NN-Project\Results\3\classified_images"
@@ -169,9 +169,9 @@ if __name__ == "__main__":
 
     accuracies = []
 
-    learning_rate = 0.01
+    learning_rate = 0.005
     batch_size = 1
-    epochs = 10
+    epochs = 20
 
     for i, fold in enumerate(folds):
         if len(folds) > 1:
@@ -255,4 +255,3 @@ if __name__ == "__main__":
         accuracies.append(accuracy)
     print(sum(accuracies)/len(accuracies), accuracies)
     writer.flush()
-    

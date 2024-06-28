@@ -22,21 +22,21 @@ class ConvolutionalNeuralNetwork(nn.Module):
         # 15 * 16 -> 19 * 20 -> 15 * 16 -> 8 * 8 -> 4 * 4 -> 2 * 2
         self.conv_layer = nn.Sequential(
             Conv2d(1, 6, 5, padding=2),
-            Dropout(p=0.25),
+            Dropout(p=0.1),
             ReLU(),
             MaxPool2d(2, 2, ceil_mode=True),
             Conv2d(6, 16, 5),
-            Dropout(p=0.25),
+            Dropout(p=0.1),
             ReLU(),
             MaxPool2d(2, 2)
         )
 
         self.classifier_layer = nn.Sequential(
             Linear(16*2*2, 120),
-            Dropout(p=0.25),
+            Dropout(p=0.1),
             ReLU(),
             Linear(120, 84),
-            Dropout(p=0.25),
+            Dropout(p=0.1),
             ReLU(),
             Linear(84, 10)
         )

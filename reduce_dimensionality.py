@@ -23,11 +23,11 @@ class dimensionality_reduction:
         return images.reshape(len(images), -1)
 
     def apply_tsne(self):
-        tsne = TSNE(n_components=2, random_state=42)
+        tsne = TSNE(n_components=2)
         self.tsne_results = tsne.fit_transform(self.images_flat)
     
     def apply_mds(self):
-        mds = MDS(n_components=2, random_state=42)
+        mds = MDS(n_components=2)
         self.mds_results = mds.fit_transform(self.images_flat)
 
     def plot_tsne(self):
