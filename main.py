@@ -116,7 +116,7 @@ def train_one_epoch(epoch_index, tb_writer) -> float:
     return last_loss
 
 
-def max_norm(model, max_val=10, eps=1e-8):
+def max_norm(model, max_val=3, eps=1e-8):
     # https://github.com/kevinzakka/pytorch-goodies
     for name, param in model.named_parameters():
         if 'bias' not in name:
@@ -129,6 +129,7 @@ if __name__ == "__main__":
     # Creating DataLoaders
     softmax = Softmax(dim=1)
     dataset = imageDataset("Training_data.txt")
+    test_set = imageDataset("Testing_data.txt")
 
     test_model = False
     if test_model:
@@ -169,10 +170,10 @@ if __name__ == "__main__":
 
     accuracies = []
 
-    learning_rate = 0.005
+    learning_rate = 0.01
     batch_size = 1
     epochs = 20
-
+    
     for i, fold in enumerate(folds):
         if len(folds) > 1:
             train_set = []
@@ -191,7 +192,7 @@ if __name__ == "__main__":
 
         # learning_rate = 0.01
         # batch_size = 1
-        # epochs = 1
+        # epochs = 20
 
         train_dataLoader = DataLoader( #explain in report
             train_set,
@@ -205,7 +206,21 @@ if __name__ == "__main__":
             shuffle=True
         )
 
+        test_dataLoader = DataLoader(
+            test_set,
+            batch_size=batch_size,
+            shuffle=True
+        )
+
+        
+
+        # model = ConvolutionalNeuralNetwork().to(device)
+
+        path = r"C:\Users\brian\Documents\school\NN\github\NN-Project\runs\fashion_trainer_14_07\model_19"
         model = ConvolutionalNeuralNetwork().to(device)
+        model.load_state_dict(torch.load(path, map_location=device))
+
+
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
         timestamp = datetime.now().strftime('%H_%M')
         writer = tensorboard.SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
@@ -216,42 +231,60 @@ if __name__ == "__main__":
         best_vloss = 1_000_000
         wrong_classified = []
 
-        for epoch in range(epochs):
-            print('EPOCH {}:'.format(epoch_number + 1))
+        correct_predictions = 0
+        running_test_loss = 0.0
+        for image in test_dataLoader:
+            testinputs, testlabels = image
+            test_outputs = model(testinputs)
+            predict = torch.argmax(softmax(test_outputs))
+            target = torch.argmax(testlabels)
+            if predict == target:
+                correct_predictions += 1
+            testloss = loss_fn(test_outputs, testlabels)
+            running_test_loss += testloss
+        accuracy = float(correct_predictions / len(test_dataLoader))
+        average_test_loss = running_test_loss / (len(test_dataLoader)+1)
+        print(accuracy, average_test_loss)
 
-            model.train(True)
-            average_loss = train_one_epoch(epoch_number, writer)
+        writer.add_figure("Confusion matrix test set", createConfusionMatrix(test_dataLoader, "eval"))
 
-            running_vloss = 0.0
-            correct_predictions = 0
-            with torch.no_grad():
-                model.eval()
-                for i, data in enumerate(validation_dataloader):
-                    vinputs, vlabels = data
-                    voutputs = model(vinputs)
-                    predict = torch.argmax(softmax(voutputs))
-                    target = torch.argmax(vlabels)
-                    if predict == target:
-                        correct_predictions += 1
-                    vloss = loss_fn(voutputs, vlabels)
-                    running_vloss += vloss
+    #     for epoch in range(epochs):
+    #         print('EPOCH {}:'.format(epoch_number + 1))
 
-            accuracy = float(correct_predictions / len(validation_dataloader))
-            writer.add_scalar("Validation accuracy", accuracy, epoch)
-            average_vloss = running_vloss / (i+1)
-            print('LOSS train {} valid {}'.format(average_loss, average_vloss))
+    #         model.train(True)
+    #         average_loss = train_one_epoch(epoch_number, writer)
 
-            writer.add_scalars('Training vs. Validation Loss',
-                        { 'Training' : average_loss, 'Validation' : average_vloss },
-                        epoch_number + 1)
+    #         running_vloss = 0.0
+    #         correct_predictions = 0
+    #         with torch.no_grad():
+    #             model.eval()
+    #             for i, data in enumerate(validation_dataloader):
+    #                 vinputs, vlabels = data
+    #                 voutputs = model(vinputs)
+    #                 predict = torch.argmax(softmax(voutputs))
+    #                 target = torch.argmax(vlabels)
+    #                 if predict == target:
+    #                     correct_predictions += 1
+    #                 vloss = loss_fn(voutputs, vlabels)
+    #                 running_vloss += vloss
 
-            if average_vloss < best_vloss:
-                best_vloss = average_vloss
-                model_path = 'runs\\fashion_trainer_{}\\model_{}'.format(timestamp, epoch_number)
-                torch.save(model.state_dict(), model_path)
+    #         accuracy = float(correct_predictions / len(validation_dataloader))
+    #         writer.add_scalar("Validation accuracy", accuracy, epoch)
+    #         average_vloss = running_vloss / (i+1)
+    #         print('LOSS train {} valid {}'.format(average_loss, average_vloss))
 
-            scheduler.step()
-            epoch_number += 1
-        accuracies.append(accuracy)
-    print(sum(accuracies)/len(accuracies), accuracies)
+    #         writer.add_scalars('Training vs. Validation Loss',
+    #                     { 'Training' : average_loss, 'Validation' : average_vloss },
+    #                     epoch_number + 1)
+
+    #         if average_vloss < best_vloss:
+    #             best_vloss = average_vloss
+    #             model_path = 'runs\\fashion_trainer_{}\\model_{}'.format(timestamp, epoch_number)
+    #             torch.save(model.state_dict(), model_path)
+
+    #         scheduler.step()
+    #         epoch_number += 1
+    #     accuracies.append(accuracy)
+    #     print(accuracy)
+    # print(sum(accuracies)/len(accuracies), accuracies)
     writer.flush()
